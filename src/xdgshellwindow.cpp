@@ -271,12 +271,28 @@ void XdgSurfaceWindow::moveResizeInternal(const RectF &rect, MoveResizeMode mode
         const QSizeF roundedRequestedClientSize = surface()->snappedSize(requestedClientSize);
 
         const QSizeF roundedClientSize = surface()->snappedSize(clientSize());
-        if (roundedRequestedClientSize == roundedClientSize) {
+        // A configure event that the client has not answered yet may carry another size. If no
+        // new configure event is sent, the client applies that older one later, and its bounds
+        // become the move resize geometry. So only skip the configure if none is pending.
+        if (roundedRequestedClientSize == roundedClientSize && m_configureEvents.isEmpty()) {
             const RectF snappedRect = RectF(rect.topLeft(), nextClientSizeToFrameSize(snapToPixels(roundedClientSize, nextTargetScale())));
             updateGeometry(m_nextGravity.apply(snappedRect, rect));
         } else {
             m_configureFlags |= XdgSurfaceConfigure::ConfigurePosition;
             scheduleConfigure();
+
+            // The window keeps its position until the client commits the new size. Many clients
+            // wait for a frame callback before they draw, and a window outside every output gets
+            // none, for example after its output was disabled. Move such a window now, at its
+            // current size, so that it gets painted and the client can answer the configure.
+            const RectF frame = frameGeometry();
+            const auto outputs = workspace()->outputs();
+            const bool offscreen = std::none_of(outputs.begin(), outputs.end(), [&frame](const LogicalOutput *output) {
+                return output->geometryF().intersects(frame);
+            });
+            if (readyForPainting() && offscreen) {
+                updateGeometry(RectF(rect.topLeft(), size()));
+            }
         }
     } else {
         // If the window is moved, cancel any queued window position updates.
