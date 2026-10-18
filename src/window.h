@@ -1139,6 +1139,11 @@ public:
     virtual bool takesAsyncFocus() const;
     virtual bool wantsInput() const = 0;
     void checkWorkspacePosition(RectF oldGeometry = RectF(), LogicalOutput *oldOutput = nullptr);
+    /**
+     * Returns @p geometry adjusted to the area that the window's maximize, fullscreen
+     * or tile state requires, or @p geometry unchanged if the window has none of them.
+     */
+    RectF ensureSpecialStateGeometry(const RectF &geometry);
 #if KWIN_BUILD_X11
     virtual xcb_timestamp_t userTime() const;
 #endif
@@ -1800,7 +1805,6 @@ protected:
     void setKeyboardGeometryRestore(const RectF &geom);
 
     RectF moveToArea(const RectF &geometry, const RectF &oldArea, const RectF &newArea);
-    RectF ensureSpecialStateGeometry(const RectF &geometry);
 
     void cleanTabBox();
     void maybeSendFrameCallback();
