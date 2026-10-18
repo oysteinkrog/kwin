@@ -127,10 +127,16 @@ void PlacementTracker::restore(const QString &key)
                 window->setQuickTileMode(newData.quickTile, newData.geometry.center());
                 window->setMaximize(newData.maximize & MaximizeMode::MaximizeVertical, newData.maximize & MaximizeMode::MaximizeHorizontal);
                 window->setFullScreen(newData.fullscreen);
-                // The saved geometry of a maximized, fullscreen or tiled window can be out of date,
-                // for example if a panel changed while another layout was active. Its state decides
-                // the geometry, so only use the saved geometry to find the output.
-                window->moveResize(window->ensureSpecialStateGeometry(newData.geometry));
+                // The saved geometry of a maximized or tiled window can be out of date, for example
+                // if a panel changed while another layout was active. Its state decides the
+                // geometry, so only use the saved geometry to find the output. Fullscreen windows
+                // keep the saved geometry, which may span several outputs for X11 windows that
+                // set _NET_WM_FULLSCREEN_MONITORS.
+                if (newData.fullscreen) {
+                    window->moveResize(newData.geometry);
+                } else {
+                    window->moveResize(window->ensureSpecialStateGeometry(newData.geometry));
+                }
                 window->setGeometryRestore(newData.geometryRestore);
                 window->setFullscreenGeometryRestore(newData.fullscreenGeometryRestore);
                 m_lastRestoreData[window] = dataForWindow(window);
