@@ -1512,7 +1512,7 @@ void Workspace::assignBrightnessDevices(OutputConfiguration &outputConfig)
     const auto devices = waylandServer()->externalBrightness()->devices();
     for (BrightnessDevice *device : devices) {
         // assign the device to the most fitting output
-        const auto it = std::ranges::find_if(candidates, [device, &outputConfig](BackendOutput *output) {
+        const auto allowed = [device, &outputConfig](BackendOutput *output) {
             if (output->isInternal() != device->isInternal()) {
                 return false;
             }
@@ -1520,7 +1520,10 @@ void Workspace::assignBrightnessDevices(OutputConfiguration &outputConfig)
             const bool disallowDdcCi = output->isDdcCiKnownBroken()
                 || (changeset && !changeset->allowDdcCi.value_or(output->allowDdcCi()))
                 || (!changeset && !output->allowDdcCi());
-            if (disallowDdcCi && device->usesDdcCi()) {
+            return !(disallowDdcCi && device->usesDdcCi());
+        };
+        auto it = std::ranges::find_if(candidates, [device, &allowed](BackendOutput *output) {
+            if (!allowed(output)) {
                 return false;
             }
             if (output->isInternal()) {
@@ -1529,6 +1532,19 @@ void Workspace::assignBrightnessDevices(OutputConfiguration &outputConfig)
                 return output->edid().isValid() && !device->edidBeginning().isEmpty() && output->edid().raw().startsWith(device->edidBeginning());
             }
         });
+        if (it == candidates.end() && !device->isInternal()) {
+            // An EDID override (for example one that adds modes) changes the bytes the
+            // kernel reports, while the monitor still answers DDC/CI with its own EDID.
+            // Fall back to the vendor, product code and serial number (EDID bytes 8 to 15),
+            // and only when they are set and exactly one output has them.
+            const QByteArray deviceId = device->edidBeginning().mid(8, 8);
+            const auto sameMonitor = [&deviceId, &allowed](BackendOutput *output) {
+                return allowed(output) && output->edid().isValid() && output->edid().raw().mid(8, 8) == deviceId;
+            };
+            if (deviceId.size() == 8 && deviceId.mid(4) != QByteArray(4, '\0') && std::ranges::count_if(candidates, sameMonitor) == 1) {
+                it = std::ranges::find_if(candidates, sameMonitor);
+            }
+        }
         if (it != candidates.end()) {
             BackendOutput *const output = *it;
             candidates.erase(it);
